@@ -1,0 +1,78 @@
+ from google.cloud import videointelligence_v1p1beta1 as videointelligence
+import nltk
+from nltk.corpus import stopwords
+# nltk.download('stopwords')
+import string
+
+def speech_transcription(input_uri):
+    ans = []
+    """Transcribe speech from a video stored on GCS."""
+    video_client = videointelligence.VideoIntelligenceServiceClient()
+
+    features = [videointelligence.enums.Feature.SPEECH_TRANSCRIPTION]
+
+    config = videointelligence.types.SpeechTranscriptionConfig(
+        language_code='en-US',
+        enable_automatic_punctuation=True)
+    video_context = videointelligence.types.VideoContext(
+        speech_transcription_config=config)
+
+    operation = video_client.annotate_video(
+        input_uri, features=features,
+        video_context=video_context)
+
+    print('\nProcessing video for speech transcription.')
+
+    result = operation.result(timeout=9000)
+
+    # There is only one annotation_result since only
+    # one video is processed.
+    annotation_results = result.annotation_results[0]
+    speech_transcription = annotation_results.speech_transcriptions[0]
+    alternative = speech_transcription.alternatives[0]
+
+    print('Transcript: {}'.format(alternative.transcript))
+    print('Confidence: {}\n'.format(alternative.confidence))
+
+    print('Word level information:')
+
+
+
+    for word_info in alternative.words:
+        word = word_info.word
+        start_time = word_info.start_time
+        end_time = word_info.end_time
+
+        ans.append((
+            start_time.seconds + start_time.nanos * 1e-9,
+            end_time.seconds + end_time.nanos * 1e-9,
+            word))
+
+    return alternative.transcript,ans
+
+
+
+
+
+def parse_timestamps(timestamps):
+
+    timestampsFiltered = [word for word in timestamps if word[2].lower().translate( string.punctuation) not in stopwords.words('english')]
+    # print(timestampsFiltered)
+
+    wordSet = dict({})
+
+    for i in timestampsFiltered:
+        if i[2].lower().translate( string.punctuation) not in wordSet:
+            wordSet[i[2].lower().translate( string.punctuation)] = 1
+        else:
+            wordSet[i[2].lower().translate( string.punctuation)] = wordSet[i[2].lower().translate(string.punctuation)]+1
+
+    # print(wordSet)
+
+    for i in wordSet:
+        if wordSet[i]>1:
+            for item in timestampsFiltered:
+                if item[2].lower().translate( string.punctuation) == i:
+                    # print(item)
+                    yield item
+            print("\n")
